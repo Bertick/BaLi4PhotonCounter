@@ -1,10 +1,13 @@
 import os.path
+import threading as th
 from ctypes import windll, byref, c_long, c_byte
+from functools import wraps
+
 subfolders = ['src', 'main', 'python', 'Libs', 'C8855-01api.dll']
 libpath = os.path.join(os.path.realpath('.'), *subfolders)
 libhandle = windll.LoadLibrary(libpath)
 
-USB_TIMEOUT = 1
+USB_TIMEOUT = 2
 
 # Hamamatsu gate times
 GATE_TIMES = {
@@ -38,42 +41,61 @@ PMT_POWER_ON = 1
 PMT_POWER_CHECK = 2
 
 
+def threaded(f):
+    @wraps(f)
+    def wrapper(*args):
+        _executor = th.Thread(name='executor', target=f, args=args, daemon=True)
+        _executor.start()
+
+        # wait USB_TIMEOUT for the executor to finish
+        _executor.join(USB_TIMEOUT)
+
+        if _executor.is_alive():
+            # timeout occurred
+            _executor._delete()
+            raise TimeoutError()
+    return wrapper
+
+
+
 class Hamamatsu:
     def __init__(self):
-        self._hhandle = None
+        self.uid = None
+        self.hhandle = None
 
-    def hardware_init(self):
-        self._hhandle = libhandle.C8855Open()
+    @threaded
+    def open(self):
+        self.hhandle = libhandle.C8855Open()
         # todo: how do we check if this is a good handle? manual says nothing
         self.reset()
 
     def _check_handle(self):
-        if self._hhandle is None:
+        if self.hhandle is None:
             raise ValueError('Hardware is not yet initialized')
 
     def reset(self):
         self._check_handle()
-        if libhandle.C8855Reset(self._hhandle) == 0:
+        if libhandle.C8855Reset(self.hhandle) == 0:
             raise RuntimeError('Could not reset')
 
     def close(self):
         self._check_handle()
-        if libhandle.C8855Close(self._hhandle) == 0:
+        if libhandle.C8855Close(self.hhandle) == 0:
             raise RuntimeError('Could not close')
 
     def count_start(self):
         self._check_handle()
-        if libhandle.C8855CountStart(self._hhandle, SOFTWARE_TRIGGER) == 0:
+        if libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER) == 0:
             raise RuntimeError('Could not start count process')
 
     def count_stop(self):
         self._check_handle()
-        if libhandle.C8855CountStop(self._hhandle) == 0:
+        if libhandle.C8855CountStop(self.hhandle) == 0:
             raise RuntimeError('Could not stop count process')
 
     def setup(self, gtime: str, mode: int, n_gates: int):
         self._check_handle()
-        if libhandle.C8855Setup(self._hhandle, GATE_TIMES[gtime], mode, n_gates) == 0:
+        if libhandle.C8855Setup(self.hhandle, GATE_TIMES[gtime], mode, n_gates) == 0:
             raise RuntimeError('Could not setup the hardware')
 
     def read_data(self):
@@ -82,7 +104,7 @@ class Hamamatsu:
         data_type = 200 * c_long
         data = data_type()
         result = c_byte()
-        if libhandle.C8855ReadData(self._hhandle, byref(data), byref(result)) == 0:
+        if libhandle.C8855ReadData(self.hhandle, byref(data), byref(result)) == 0:
             raise RuntimeError('Could not read data')
         # todo: check if 'result' is not an error
         return data
@@ -90,9 +112,15 @@ class Hamamatsu:
     def set_power(self, status: bool):
         self._check_handle()
         pow_mode = PMT_POWER_ON if status else PMT_POWER_OFF
-        if libhandle.C8855SetPmtPower(self._hhandle, pow_mode) == 0:
+        if libhandle.C8855SetPmtPower(self.hhandle, pow_mode) == 0:
             raise RuntimeError('Could not set power')
 
+    def read_id(self):
+        self._check_handle()
+        uid = c_long()
+        if libhandle.C8855ReadId(self.hhandle, byref(uid)) == 0:
+            raise RuntimeError('Could not read ID')
+        self.uid = int(uid)
 
 
 
