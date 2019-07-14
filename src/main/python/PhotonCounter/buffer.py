@@ -62,5 +62,9 @@ class Buffer:
             raise ValueError(f"Buffer Size must be positive, got {value}")
         self._size = value
 
+        while len(self._container) >= self._size:
+            # delete older points
+            self._container.popleft()
+
 
 

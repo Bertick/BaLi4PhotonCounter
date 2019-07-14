@@ -8,20 +8,19 @@ from PyQt5.QtGui import QDoubleValidator, QIntValidator
 
 from .ui.mainwindow import Ui_MainWindow
 
-from .hamamatsu import Hamamatsu
+from .hamamatsu import Hamamatsu, minit, GATE_TIMES
 from .buffer import Buffer
 
 
 DEFAULT_Y_RANGE = 100
 DEFAULT_BUFFER_SIZE = 200
 DEFAULT_X_RANGE = 30.0
+TIMINGS = [str(key) for key in GATE_TIMES.keys()]
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    def __init__(self, hardware_model: Hamamatsu):
+    def __init__(self, n_units):
         super(MainWindow, self).__init__()
-
-        self._hardware = hardware_model
 
         # setup the UI code
         self.setupUi(self)
@@ -36,18 +35,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.y_range_form.setText(str(DEFAULT_Y_RANGE))
         self.buffer_size_form.setText(str(DEFAULT_BUFFER_SIZE))
         self.display_secs_form.setText(str(DEFAULT_X_RANGE))
+        self.gate_time_select.addItems(TIMINGS)
 
         # prepare the PlotWidget
         self.count_graph.plotItem.setTitle("Counts")
         self.count_graph.plotItem.setLabel('bottom', 'time', 'sec')
         self.count_graph.plotItem.setLabel('left', 'Counts/Gate', '')
 
+        # hardware setup
+        self._hw = minit(n_units)
+
         # data buffer
         # todo: output_path should be a real file and save = True (user decision)
-        self._buffer = Buffer(DEFAULT_BUFFER_SIZE, '', ['time', 'counts'])
+        self._buffer = Buffer(DEFAULT_BUFFER_SIZE, '', ['time'] + [f'counts_{i}' for i in range(len(self._hw))])
 
         # process user actions
         self.y_range_auto.toggled.connect(self._toggle_y_range)
+        self.buffer_size_form.editingFinished.connect(self._on_buffer_size_change)
+        self.setup_bttn.released.connect(self._on_setup_click)
 
     def warning_box(self, msg):
         QMessageBox.warning(self, '', msg)
@@ -65,8 +70,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         vbox = self.count_graph.plotItem.getViewBox()
 
         xmax = float(self.display_secs_form.text())
-        if not xmax or xmax == 0.0:
-            xmax = -30.0
+        if not xmax:
+            xmax = DEFAULT_X_RANGE
         if xmax > 0:
             xmax = -xmax
 
@@ -75,7 +80,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.y_range_auto.isChecked():
             ymax = float(self.y_range_form.text())
             if not ymax:
-                ymax = 1.0
+                ymax = DEFAULT_Y_RANGE
+            if ymax < 0:
+                ymax = -ymax
             vbox.setYRange(0, ymax, padding=0)
 
     def init_hardware(self):
@@ -93,6 +100,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _toggle_y_range(self, checked):
         # if auto range is enabled, disable the user input form
         self.y_range_form.setDisabled(checked)
+
+    @pyqtSlot()
+    def _on_buffer_size_change(self):
+        sender = self.sender()
+        value = int(sender.text())
+        if not value:
+            value = DEFAULT_BUFFER_SIZE
+        self._buffer.size = value
+
+    @pyqtSlot()
+    def _on_setup_click(self):
+        raise NotImplementedError('ciccio devo ancora capire come parla sto photon counter')
+
 
     ########################
     # SETTINGS AND CLOSING #

@@ -40,6 +40,8 @@ PMT_POWER_OFF = 0
 PMT_POWER_ON = 1
 PMT_POWER_CHECK = 2
 
+MAX_HANDLES = 16
+
 
 def threaded(f):
     @wraps(f)
@@ -57,17 +59,36 @@ def threaded(f):
     return wrapper
 
 
+@threaded
+def sopen():
+    hhandle = libhandle.C8855Open()
+    # todo: how do we check if this is a good handle? manual says nothing
+    return hhandle
+
+@threaded
+def mopen(nunits):
+    hhandles = [byref(c_long) for _ in range(MAX_HANDLES)]
+    libhandle.C8855MOpen(nunits, *hhandles)
+    return hhandles
+
+
+def minit(nunits):
+    hhandles = mopen(nunits)
+    hama_objs = []
+    for hh in hhandles:
+        obj = Hamamatsu(hh)
+        obj.read_id()
+        print(obj.uid)
+        hama_objs.append(obj)
+    return hama_objs
+
 
 class Hamamatsu:
-    def __init__(self):
+    def __init__(self, handle):
         self.uid = None
-        self.hhandle = None
-
-    @threaded
-    def open(self):
-        self.hhandle = libhandle.C8855Open()
-        # todo: how do we check if this is a good handle? manual says nothing
-        self.reset()
+        self.hhandle = handle
+        self.is_powered = False
+        self.is_counting = False
 
     def _check_handle(self):
         if self.hhandle is None:
@@ -87,11 +108,13 @@ class Hamamatsu:
         self._check_handle()
         if libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER) == 0:
             raise RuntimeError('Could not start count process')
+        self.is_counting = True
 
     def count_stop(self):
         self._check_handle()
         if libhandle.C8855CountStop(self.hhandle) == 0:
             raise RuntimeError('Could not stop count process')
+        self.is_counting = False
 
     def setup(self, gtime: str, mode: int, n_gates: int):
         self._check_handle()
@@ -114,7 +137,9 @@ class Hamamatsu:
         pow_mode = PMT_POWER_ON if status else PMT_POWER_OFF
         if libhandle.C8855SetPmtPower(self.hhandle, pow_mode) == 0:
             raise RuntimeError('Could not set power')
+        self.is_powered = status
 
+    @threaded
     def read_id(self):
         self._check_handle()
         uid = c_long()
