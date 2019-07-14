@@ -93,11 +93,6 @@ class Hamamatsu:
         if libhandle.C8855SetPmtPower(self._hhandle, pow_mode) == 0:
             raise RuntimeError('Could not set power')
 
-    @staticmethod
-    def set_timeout():
-        if libhandle.C8855TimeOut(USB_TIMEOUT * 1000) == 0:
-            raise RuntimeError('Could not set timeout')
-
 
 
 
