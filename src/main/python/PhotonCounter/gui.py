@@ -78,7 +78,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 ymax = 1.0
             vbox.setYRange(0, ymax, padding=0)
 
-    def init_hardware(self, click):
+    def init_hardware(self):
         try:
             self._hardware.open()
             self._hardware.read_id()
