@@ -26,7 +26,7 @@
     <property name="orientation">
      <enum>Qt::Horizontal</enum>
     </property>
-    <widget class="PlotWidget" name="graphicsView"/>
+    <widget class="PlotWidget" name="count_graph"/>
     <widget class="QWidget" name="layoutWidget">
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
@@ -135,6 +135,12 @@
          <widget class="QPushButton" name="power_bttn">
           <property name="text">
            <string>Set Power ON</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="checked">
+           <bool>false</bool>
           </property>
          </widget>
         </item>

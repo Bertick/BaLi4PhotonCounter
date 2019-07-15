@@ -6,11 +6,7 @@ from fbs_runtime.application_context import cached_property
 from fbs_runtime.application_context.PyQt5 import ApplicationContext
 from PyQt5.QtWidgets import QApplication, QInputDialog
 
-from .hamamatsu import Hamamatsu
 from .gui import MainWindow
-
-# import logging
-# logging.basicConfig(filename='BaLi4PhotonCounter_log.log', level=logging.DEBUG)
 
 APP_NAME = "BaLi Photon Counter"
 APP_VERSION = "0.1"
@@ -28,9 +24,9 @@ class PhotonCounter(QApplication):
         super(PhotonCounter, self).__init__(sys_argv)
 
         # ask user for how many units we should work with
-        units = QInputDialog.getInt(self, 'Units number', 'Units number:', value=1, min=1, max=16)
+        units, ok = QInputDialog.getInt(None, 'Units number', 'Units number:', value=1, min=1, max=16)
 
-        if not units:
+        if not units or not ok:
             sys.exit(0)
 
         self._main_view = MainWindow(units)

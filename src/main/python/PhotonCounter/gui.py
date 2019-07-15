@@ -1,14 +1,12 @@
-import sys
-from threading import Thread
+import threading as th
 
-from PyQt5.QtCore import Qt, QSettings, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QSettings, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
-from PyQt5.QtGui import QPen, QBrush
 from PyQt5.QtGui import QDoubleValidator, QIntValidator
 
 from .ui.mainwindow import Ui_MainWindow
 
-from .hamamatsu import Hamamatsu, minit, GATE_TIMES
+from .hamamatsu import minit, GATE_TIMES
 from .buffer import Buffer
 
 
@@ -16,9 +14,14 @@ DEFAULT_Y_RANGE = 100
 DEFAULT_BUFFER_SIZE = 200
 DEFAULT_X_RANGE = 30.0
 TIMINGS = [str(key) for key in GATE_TIMES.keys()]
+DEFAULT_PADDING = 0.1
+DEFAULT_PLOT_UPDATE = 0.1
+
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    do_update = pyqtSignal()
+
     def __init__(self, n_units):
         super(MainWindow, self).__init__()
 
@@ -44,6 +47,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # hardware setup
         self._hw = minit(n_units)
+        if not self._hw:
+            # no hardware found
+            self.warning_box('No hardware could be detected')
 
         # data buffer
         # todo: output_path should be a real file and save = True (user decision)
@@ -53,45 +59,81 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.y_range_auto.toggled.connect(self._toggle_y_range)
         self.buffer_size_form.editingFinished.connect(self._on_buffer_size_change)
         self.setup_bttn.released.connect(self._on_setup_click)
+        self.power_bttn.released.connect(self._on_power_click)
+
+        # internal plotting signals
+        self.do_update.connect(self.update_plot)
 
     def warning_box(self, msg):
         QMessageBox.warning(self, '', msg)
 
-    def plot_data(self, times, values):
+    def init_hardware(self):
+        for hardware in self._hw:
+            try:
+                hardware.read_id()
+                print(hardware.uid)
+            except TimeoutError:
+                self.warning_box(f'timeout occurred during hardware init: handle {hardware.hhandle}')
+
+    ############
+    # PLOTTING #
+    ############
+    def _plot_data(self, times, values):
         tt = [t - times[-1] for t in times]
-        self.count_graph.plotItem.clear()
-        self.count_graph.plotItem.plot(tt, values,
-                                       pen=(0, 0, 200),
-                                       symbolBrush=(0, 0, 200),
-                                       symbolPen='w',
-                                       symbol='o',
-                                       symbolSize=2)
-
+        self.count_graph.clear()
+        self.count_graph.plot(tt, values,
+                              pen=(0, 0, 200),
+                              symbolBrush=(0, 0, 200),
+                              symbolPen='w',
+                              symbol='o',
+                              symbolSize=2)
         vbox = self.count_graph.plotItem.getViewBox()
-
-        xmax = float(self.display_secs_form.text())
-        if not xmax:
+        xmax_str = self.display_secs_form.text()
+        if not xmax_str:
             xmax = DEFAULT_X_RANGE
+        else:
+            xmax = float(xmax_str)
         if xmax > 0:
             xmax = -xmax
-
-        vbox.setXRange(xmax, 0.1 * abs(max(tt)-min(tt)), padding=0)
-
+        xmax = max(xmax, min(tt))
+        vbox.setXRange(xmax, DEFAULT_PADDING * abs(max(tt)-min(tt)), padding=0)
         if not self.y_range_auto.isChecked():
             ymax = float(self.y_range_form.text())
             if not ymax:
                 ymax = DEFAULT_Y_RANGE
-            if ymax < 0:
-                ymax = -ymax
-            vbox.setYRange(0, ymax, padding=0)
+        else:
+            ymax = max(values) * (1.0 + DEFAULT_PADDING)
+        if ymax < 0:
+            ymax = -ymax
+        vbox.setYRange(0, ymax, padding=0)
 
-    def init_hardware(self):
-        try:
-            self._hardware.open()
-            self._hardware.read_id()
-            print(self._hardware.uid)
-        except TimeoutError:
-            self.warning_box('timeout occurred')
+    @pyqtSlot()
+    def update_plot(self):
+        # print('updating plot')
+        # print(self._buffer)
+        bb_len = len(self._buffer)
+        if bb_len:
+            bb_width = len(self._buffer[0])
+        else:
+            bb_width = 0
+
+        if not bb_len or not bb_width:
+            return
+
+        # time series (always first place)
+        ts = [i[0] for i in self._buffer]
+        # value series
+        vs = [[i[k] for i in self._buffer] for k in range(1, bb_width)]
+        # plot 'em
+        for values in vs:
+            self._plot_data(ts, values)
+
+    def _plot_reminder(self):
+        cond = th.Condition()
+        while True:
+            self.do_update.emint()
+            with cond:
+                cond.wait(DEFAULT_PLOT_UPDATE)
 
     #########################
     # USER INPUT PROCESSING #
@@ -113,6 +155,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def _on_setup_click(self):
         raise NotImplementedError('ciccio devo ancora capire come parla sto photon counter')
 
+    def _toggle_hardware_power(self, status):
+        for hardware in self._hw:
+            try:
+                hardware.set_power(status)
+            except TimeoutError:
+                self.warning_box('timeout occurred during hardware Power toggling')
+
+    @pyqtSlot()
+    def _on_power_click(self):
+        sender = self.sender()
+        if sender.isChecked():
+            sender.setText('set Power OFF')
+            pow_status = True
+        else:
+            sender.setText('set Power ON')
+            pow_status = False
+        self._toggle_hardware_power(pow_status)
 
     ########################
     # SETTINGS AND CLOSING #

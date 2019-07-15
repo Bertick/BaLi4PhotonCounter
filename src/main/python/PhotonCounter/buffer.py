@@ -4,7 +4,7 @@ from collections import deque
 
 
 class Buffer:
-    def __init__(self, size: int, output_path: str, keywords: list):
+    def __init__(self, size: int, output_path: str, keywords: list, save: bool = False):
         if size <= 0:
             raise ValueError(f"Buffer Size must be positive, got {size}")
 
@@ -21,6 +21,19 @@ class Buffer:
         self._container = deque()
         self._keywords = keywords
         self._new_points = 0
+        self._save = save
+
+    def __str__(self):
+        return self._container.__str__()
+
+    def __len__(self):
+        return self._container.__len__()
+
+    def __getitem__(self, item):
+        return self._container.__getitem__(item)
+
+    def __iter__(self):
+        return self._container.__iter__()
 
     def _write_header(self):
         with open(self._output_path, 'w+') as f_out:
@@ -38,7 +51,7 @@ class Buffer:
 
     def push_back(self, *args):
         if len(args) != len(self._keywords):
-            raise ValueError("Not enough values to push in buffer")
+            raise ValueError(f"Not enough values to push in buffer, got {len(args)}, required {len(self._keywords)}")
 
         if len(self._container) == self._size:
             # if we reached max size, pop leftmost data
@@ -49,7 +62,8 @@ class Buffer:
         self._new_points += 1
 
         if self._new_points > self._size:
-            self._write_data()
+            if self._save:
+                self._write_data()
             self._new_points = 0
 
     @property

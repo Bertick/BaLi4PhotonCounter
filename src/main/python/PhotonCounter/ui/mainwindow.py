@@ -2,9 +2,10 @@
 
 # Form implementation generated from reading ui file 'mainwin.ui'
 #
-# Created by: PyQt5 UI code generator 5.12.2
+# Created by: PyQt5 UI code generator 5.13.0
 #
 # WARNING! All changes made in this file will be lost!
+
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -19,27 +20,13 @@ class Ui_MainWindow(object):
         self.splitter.setGeometry(QtCore.QRect(9, 9, 499, 236))
         self.splitter.setOrientation(QtCore.Qt.Horizontal)
         self.splitter.setObjectName("splitter")
-        self.graphicsView = PlotWidget(self.splitter)
-        self.graphicsView.setObjectName("graphicsView")
+        self.count_graph = PlotWidget(self.splitter)
+        self.count_graph.setObjectName("count_graph")
         self.layoutWidget = QtWidgets.QWidget(self.splitter)
         self.layoutWidget.setObjectName("layoutWidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.layoutWidget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.horizontalLayout_4 = QtWidgets.QHBoxLayout()
-        self.horizontalLayout_4.setObjectName("horizontalLayout_4")
-        self.unit_count_form = QtWidgets.QSpinBox(self.layoutWidget)
-        self.unit_count_form.setObjectName("unit_count_form")
-        self.horizontalLayout_4.addWidget(self.unit_count_form)
-        self.unit_set_bttn = QtWidgets.QPushButton(self.layoutWidget)
-        self.unit_set_bttn.setObjectName("unit_set_bttn")
-        self.horizontalLayout_4.addWidget(self.unit_set_bttn)
-        self.verticalLayout.addLayout(self.horizontalLayout_4)
-        self.line_4 = QtWidgets.QFrame(self.layoutWidget)
-        self.line_4.setFrameShape(QtWidgets.QFrame.HLine)
-        self.line_4.setFrameShadow(QtWidgets.QFrame.Sunken)
-        self.line_4.setObjectName("line_4")
-        self.verticalLayout.addWidget(self.line_4)
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.label = QtWidgets.QLabel(self.layoutWidget)
@@ -97,6 +84,8 @@ class Ui_MainWindow(object):
         self.setup_bttn.setObjectName("setup_bttn")
         self.horizontalLayout_3.addWidget(self.setup_bttn)
         self.power_bttn = QtWidgets.QPushButton(self.layoutWidget)
+        self.power_bttn.setCheckable(True)
+        self.power_bttn.setChecked(False)
         self.power_bttn.setObjectName("power_bttn")
         self.horizontalLayout_3.addWidget(self.power_bttn)
         self.verticalLayout.addLayout(self.horizontalLayout_3)
@@ -115,7 +104,6 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        self.unit_set_bttn.setText(_translate("MainWindow", "Set"))
         self.label.setText(_translate("MainWindow", "Y Axis Max"))
         self.y_range_form.setText(_translate("MainWindow", "0.0"))
         self.y_range_auto.setText(_translate("MainWindow", "Auto"))
@@ -124,6 +112,4 @@ class Ui_MainWindow(object):
         self.label_3.setText(_translate("MainWindow", "Gate Time [msec]"))
         self.setup_bttn.setText(_translate("MainWindow", "Setup Hardware"))
         self.power_bttn.setText(_translate("MainWindow", "Set Power ON"))
-
-
 from pyqtgraph import PlotWidget
