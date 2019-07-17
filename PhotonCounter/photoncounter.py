@@ -1,22 +1,14 @@
 import sys
 import faulthandler
 import time
+import atexit
 
-from fbs_runtime.application_context import cached_property
-from fbs_runtime.application_context.PyQt5 import ApplicationContext
 from PyQt5.QtWidgets import QApplication, QInputDialog
 
 from .gui import MainWindow
 
 APP_NAME = "BaLi Photon Counter"
 APP_VERSION = "0.1"
-
-
-class BaLiContext(ApplicationContext):
-    @cached_property
-    def app(self):
-        return PhotonCounter(sys.argv)
-
 
 class PhotonCounter(QApplication):
     """Main class, interconnects the other classes"""
@@ -45,11 +37,19 @@ def main():
     with open('traceback_dump.txt', 'w+') as dump_file:
         faulthandler.enable(file=dump_file)
 
-        app_context = BaLiContext()
+        app = PhotonCounter(sys.argv)
 
-        sys.exit(app_context.app.exec_())
+        def _exit_handler():
+            for hh in app._main_view._hw:
+                try:
+                    hh.set_power(False)
+                    hh.close()
+                except Exception:
+                    pass
 
+        atexit.register(_exit_handler)
 
+        sys.exit(app.exec_())
 
 
 

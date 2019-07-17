@@ -22,6 +22,8 @@ DEFAULT_PLOT_UPDATE = 0.1
 TIMINGS = [str(key) for key in GATE_TIMES.keys()]
 DEFAULT_MEASUREMENT_POINTS = 500000
 
+COLOURS = [(0, 200, 0), (200, 0, 0), (0, 0, 200), (255, 180, 0), (255, 0, 180)]
+
 
 def _compute_iterations(gtime: str, mes_points: int):
     gates = TRANS[gtime]
@@ -55,6 +57,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.buffer_size_form.setText(str(DEFAULT_BUFFER_SIZE))
         self.display_secs_form.setText(str(DEFAULT_X_RANGE))
         self.gate_time_select.addItems(TIMINGS)
+        self.gate_time_select.setCurrentIndex(TIMINGS.index('100MS'))
 
         # prepare the PlotWidget
         self.count_graph.plotItem.setTitle("Counts")
@@ -62,7 +65,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.count_graph.plotItem.setLabel('left', 'Counts/Gate', '')
 
         # hardware setup
-        self._hw = minit(n_units)
+        try:
+            self._hw = minit(n_units)
+        except TimeoutError as e:
+            self.warning_box('Unable to initialize Hardware', seppuku=True)
         if not self._hw:
             # no hardware found
             self.warning_box('No hardware could be detected')
@@ -71,7 +77,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # todo: output_path should be a real file and save = True (user decision)
         self._buffer = Buffer(DEFAULT_BUFFER_SIZE, '', ['time'] + [f'counts_{i}' for i in range(len(self._hw))])
 
-        self._read_thread = th.Thread(name='reader', target=self._read_data)
+        self._read_thread = self._regenerate_read_thread()
+
+        self._halt_event = th.Event()
         self._iterations = -1
         self._gates = -1
 
@@ -102,18 +110,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             except TimeoutError:
                 self.warning_box(f'timeout occurred during hardware init: handle {hardware.hhandle}', seppuku=True)
 
+    def _regenerate_read_thread(self):
+        return th.Thread(name='reader', target=self._read_data, daemon=True)
+
     ############
     # PLOTTING #
     ############
-    def _plot_data(self, times, values):
+    def _plot_data(self, times, values, colour):
         tt = [t - times[-1] for t in times]
         self.count_graph.clear()
         self.count_graph.plot(tt, values,
-                              pen=(0, 0, 200),
-                              symbolBrush=(0, 0, 200),
+                              pen=colour,
+                              symbolBrush=colour,
                               symbolPen='w',
                               symbol='o',
-                              symbolSize=2)
+                              symbolSize=4)
         vbox = self.count_graph.plotItem.getViewBox()
         xmax_str = self.display_secs_form.text()
         if not xmax_str:
@@ -123,7 +134,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if xmax > 0:
             xmax = -xmax
         xmax = max(xmax, min(tt))
-        vbox.setXRange(xmax, DEFAULT_PADDING * abs(max(tt)-min(tt)), padding=0)
+        vbox.setXRange(xmax, DEFAULT_PADDING * abs(xmax), padding=0)
         if not self.y_range_auto.isChecked():
             ymax = float(self.y_range_form.text())
             if not ymax:
@@ -132,12 +143,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ymax = max(values) * (1.0 + DEFAULT_PADDING)
         if ymax < 0:
             ymax = -ymax
-        vbox.setYRange(0, ymax, padding=0)
+        ymin = min(values) * (1.0 - DEFAULT_PADDING)
+        vbox.setYRange(ymin, ymax, padding=0)
 
     @pyqtSlot()
     def update_plot(self):
-        print('updating plot')
-        print(self._buffer)
         bb_len = len(self._buffer)
         if bb_len:
             bb_width = len(self._buffer[0])
@@ -152,8 +162,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # value series
         vs = [[i[k] for i in self._buffer] for k in range(1, bb_width)]
         # plot 'em
-        for values in vs:
-            self._plot_data(ts, values)
+        for i, values in enumerate(vs):
+            c = COLOURS[i % len(COLOURS)]
+            self._plot_data(ts, values, c)
 
     def _read_data(self):
         if self._iterations < 0 or self._gates < 0:
@@ -165,7 +176,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for i in range(self._iterations):
             points = [0.0] * len(self._hw)
             for hi, hardware in enumerate(self._hw):
-                if self._ha
+                if self._halt_event.is_set():
+                    self._halt_event.clear()
+                    return
                 data = hardware.read_data(self._gates)
                 points[hi] = sum(data) / self._gates
 
@@ -236,11 +249,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self._read_thread.start()
             except Exception as e:
                 self.warning_box(str(e))
-            sender.setText('Stop')
+            else:
+                sender.setText('Stop')
         else:
-            for hardware in self._hw:
-                hardware.count_stop()
-            sender.setText('Start')
+            self._halt_event.set()
+            self._read_thread.join(2.0)
+            if self._read_thread.is_alive():
+                self.warning_box('Failed to stop data readout thread')
+            else:
+                sender.setText('Start')
+                self._read_thread = self._regenerate_read_thread()
 
     @pyqtSlot()
     def _reset_start_bttn(self):

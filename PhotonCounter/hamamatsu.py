@@ -127,48 +127,50 @@ class Hamamatsu:
 
     def reset(self):
         if libhandle.C8855Reset(self.hhandle) == 0:
-            raise RuntimeError('Could not reset')
+            raise RuntimeError(f'Could not reset handle {self.hhandle}')
 
     def close(self):
         if libhandle.C8855Close(self.hhandle) == 0:
-            raise RuntimeError('Could not close')
+            raise RuntimeError(f'Could not close handle {self.hhandle}')
 
+    @threaded
     def count_start(self):
         if libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER) == 0:
-            raise RuntimeError('Could not start count process')
+            raise RuntimeError(f'Could not start count process for handle {self.hhandle}')
         self.is_counting = True
 
+    @threaded
     def count_stop(self):
         if libhandle.C8855CountStop(self.hhandle) == 0:
-            raise RuntimeError('Could not stop count process')
+            raise RuntimeError(f'Could not stop count process for handle {self.hhandle}')
         self.is_counting = False
 
     def setup(self, gtime: str, mode: int, n_gates: int):
         mode_c = SINGLE_TRANSFER if mode == 0 else BLOCK_TRANSFER
         n_gates_c = c_uint16(n_gates)
         if libhandle.C8855Setup(self.hhandle, GATE_TIMES[gtime], mode_c, n_gates_c) == 0:
-            raise RuntimeError('Could not setup the hardware')
+            raise RuntimeError(f'Could not setup handle {self.hhandle}')
 
     def read_data(self, gates):
-        # todo: we need better understanding of the different transfer mode
         data_type = c_uint32 * gates
         data = data_type()
         result = c_uint8()
         if libhandle.C8855ReadData(self.hhandle, byref(data), byref(result)) == 0:
-            raise RuntimeError('Could not read data')
+            raise RuntimeError(f'Could not read data from handle {self.hhandle}')
         if result.value < 0:
-            raise RuntimeError('Error during data readout')
+            raise RuntimeError(f'Error during data readout (handle {self.hhandle})')
         return list(data)
 
+    @threaded
     def set_power(self, status: bool):
         pow_mode = PMT_POWER_ON if status else PMT_POWER_OFF
         if libhandle.C8855SetPmtPower(self.hhandle, pow_mode) == 0:
-            raise RuntimeError('Could not set power')
+            raise RuntimeError(f'Could not set power for handle {self.hhandle}')
         self.is_powered = status
 
     @threaded
     def read_id(self):
         uid = c_uint8()
         if libhandle.C8855ReadId(self.hhandle, byref(uid)) == 0:
-            raise RuntimeError('Could not read ID')
+            raise RuntimeError(f'Could not read ID from handle {self.hhandle}')
         self.uid = uid.value
