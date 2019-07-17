@@ -76,6 +76,16 @@
           <item>
            <widget class="QLineEdit" name="buffer_size_form"/>
           </item>
+          <item>
+           <widget class="QCheckBox" name="save_chkbox">
+            <property name="text">
+             <string>Save</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
         <item>

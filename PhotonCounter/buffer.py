@@ -66,6 +66,15 @@ class Buffer:
                 self._write_data()
             self._new_points = 0
 
+    def set_outpath(self, outpath):
+        path, filepath = os.path.split(outpath)
+        if len(path) != 0 and not os.path.exists(path):
+            os.makedirs(path)
+        self._output_path = outpath
+
+    def set_save(self, status: bool):
+        self._save = status
+
     @property
     def size(self):
         return self._size

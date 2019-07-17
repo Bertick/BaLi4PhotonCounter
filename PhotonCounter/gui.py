@@ -1,6 +1,7 @@
 import time
 import threading as th
 import sys
+import os.path
 
 from PyQt5.QtCore import QSettings, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
@@ -20,10 +21,11 @@ DEFAULT_PLOT_UPDATE = 0.1
 
 # SETUP
 TIMINGS = [str(key) for key in GATE_TIMES.keys()]
-DEFAULT_MEASUREMENT_POINTS = 500000
+DEFAULT_MEASUREMENT_POINTS = 1000000
 
 COLOURS = [(0, 200, 0), (200, 0, 0), (0, 0, 200), (255, 180, 0), (255, 0, 180)]
 
+OUTPATH = os.path.join(os.path.realpath('.'), 'Output')
 
 def _compute_iterations(gtime: str, mes_points: int):
     gates = TRANS[gtime]
@@ -34,6 +36,11 @@ def _compute_iterations(gtime: str, mes_points: int):
     if not r:
         iterations += 1
     return iterations, gates
+
+
+def _build_date(clock):
+    tt = time.gmtime(clock)
+    return f'{tt.tm_mday}.{tt.tm_mon}.{tt.tm_year - 2000}_{tt.tm_hour}.{tt.tm_min}.{tt.tm_sec}'
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -74,8 +81,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.warning_box('No hardware could be detected')
 
         # data buffer
-        # todo: output_path should be a real file and save = True (user decision)
-        self._buffer = Buffer(DEFAULT_BUFFER_SIZE, '', ['time'] + [f'counts_{i}' for i in range(len(self._hw))])
+        self._buffer = Buffer(DEFAULT_BUFFER_SIZE,
+                              '',
+                              ['time'] + [f'counts_{i}' for i in range(len(self._hw))],
+                              save=True)
 
         self._read_thread = self._regenerate_read_thread()
 
@@ -89,6 +98,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setup_bttn.released.connect(self._on_setup_click)
         self.power_bttn.released.connect(self._on_power_click)
         self.start_bttn.released.connect(self._on_start_click)
+        self.save_chkbox.stateChanged.connect(self._on_save_click)
 
         # internal plotting signals
         self.do_update.connect(self.update_plot)
@@ -250,6 +260,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             except Exception as e:
                 self.warning_box(str(e))
             else:
+                fname = 'Data_' + _build_date(time.time()) + '.csv'
+                path = os.path.join(OUTPATH, fname)
+                self._buffer.set_outpath(path)
                 sender.setText('Stop')
         else:
             self._halt_event.set()
@@ -263,6 +276,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def _reset_start_bttn(self):
         self.start_bttn.setChecked(False)
+
+    @pyqtSlot(int)
+    def _on_save_click(self, state):
+        if not state:
+            self._buffer.set_save(False)
+        else:
+            self._buffer.set_save(True)
 
     ########################
     # SETTINGS AND CLOSING #
