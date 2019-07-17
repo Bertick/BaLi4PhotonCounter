@@ -24,12 +24,12 @@ class PhotonCounter(QApplication):
         super(PhotonCounter, self).__init__(sys_argv)
 
         # ask user for how many units we should work with
-        units, ok = QInputDialog.getInt(None, 'Units number', 'Units number:', value=1, min=1, max=16)
+        # units, ok = QInputDialog.getInt(None, 'Units number', 'Units number:', value=1, min=1, max=16)
+        #
+        # if not units or not ok:
+        #     sys.exit(0)
 
-        if not units or not ok:
-            sys.exit(0)
-
-        self._main_view = MainWindow(units)
+        self._main_view = MainWindow(1)
 
         self._main_view.show()
 

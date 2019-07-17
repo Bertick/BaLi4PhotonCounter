@@ -1,44 +1,63 @@
 import os.path
 import threading as th
-from ctypes import windll, byref, c_long, c_byte
+from ctypes import windll, byref, c_int32, c_uint32, c_uint16, c_uint8
 from functools import wraps
 
-subfolders = ['.', 'C8855-01api.dll']
-libpath = os.path.join(*subfolders)
-libhandle = windll.LoadLibrary(libpath)
+libhandle = windll.LoadLibrary('C8855-01api.dll')
 
 USB_TIMEOUT = 2
 
 # Hamamatsu gate times
 GATE_TIMES = {
-    '50US': b'0x02h',
-    '100US': b'0x03h',
-    '200US': b'0x04h',
-    '500US': b'0x05h',
-    '1MS': b'0x06h',
-    '2MS': b'0x07h',
-    '5MS': b'0x08h',
-    '10MS': b'0x09h',
-    '20MS': b'0x0Ah',
-    '50MS': b'0x0Bh',
-    '100MS': b'0x0Ch',
-    '200MS': b'0x0Dh',
-    '500MS': b'0x0Eh',
-    '1S': b'0x0Fh',
-    '2S': b'0x10h',
-    '5S': b'0x11h',
-    '10S': b'0x12h'
+    # '50US': c_uint8(2),
+    # '100US': c_uint8(3),
+    # '200US': c_uint8(4),
+    # '500US': c_uint8(5),
+    # '1MS': c_uint8(6),
+    # '2MS': c_uint8(7),
+    '5MS': c_uint8(8),
+    '10MS': c_uint8(9),
+    '20MS': c_uint8(10),
+    '50MS': c_uint8(11),
+    '100MS': c_uint8(12),
+    '200MS': c_uint8(13),
+    '500MS': c_uint8(14),
+    # '1S': c_uint8(15),
+    # '2S': c_uint8(16),
+    # '5S': c_uint8(17),
+    # '10S': c_uint8(18)
 }
 
-SOFTWARE_TRIGGER = 0
-EXTERNAL_TRIGGER = 1
+# no idea what it means but it was like this in their example
+TRANS = {
+    '50US': 500,
+    '100US': 500,
+    '200US': 500,
+    '500US': 500,
+    '1MS': 500,
+    '2MS': 250,
+    '5MS': 100,
+    '10MS': 50,
+    '20MS': 25,
+    '50MS': 10,
+    '100MS': 5,
+    '200MS': 5,
+    '500MS': 5,
+    '1S': 5,
+    '2S': 5,
+    '5S': 5,
+    '10S': 5
+}
 
-SINGLE_TRANSFER = 1
-BLOCK_TRANSFER = 2
+SOFTWARE_TRIGGER = c_uint8(0)
+EXTERNAL_TRIGGER = c_uint8(1)
 
-PMT_POWER_OFF = 0
-PMT_POWER_ON = 1
-PMT_POWER_CHECK = 2
+SINGLE_TRANSFER = c_uint8(1)
+BLOCK_TRANSFER = c_uint8(2)
+
+PMT_POWER_OFF = c_uint8(0)
+PMT_POWER_ON = c_uint8(1)
+PMT_POWER_CHECK = c_uint8(2)
 
 # HANDLES
 MAX_HANDLES = 16
@@ -71,7 +90,7 @@ def sopen():
 @threaded
 def mopen(nunits):
     global handles
-    handles = [c_long() for _ in range(MAX_HANDLES)]
+    handles = [c_int32() for _ in range(MAX_HANDLES)]
     hh_refs = [byref(hh) for hh in handles]
     libhandle.C8855MOpen(nunits, *hh_refs)
 
@@ -97,11 +116,14 @@ def minit(nunits):
 
 
 class Hamamatsu:
-    def __init__(self, handle):
-        self.uid = None
+    def __init__(self, handle: c_int32):
+        self.uid = -1
         self.hhandle = handle
         self.is_powered = False
         self.is_counting = False
+
+        self.iterations = -1
+        self.gates = -1
 
     def reset(self):
         if libhandle.C8855Reset(self.hhandle) == 0:
@@ -122,18 +144,21 @@ class Hamamatsu:
         self.is_counting = False
 
     def setup(self, gtime: str, mode: int, n_gates: int):
-        if libhandle.C8855Setup(self.hhandle, GATE_TIMES[gtime], mode, n_gates) == 0:
+        mode_c = SINGLE_TRANSFER if mode == 0 else BLOCK_TRANSFER
+        n_gates_c = c_uint16(n_gates)
+        if libhandle.C8855Setup(self.hhandle, GATE_TIMES[gtime], mode_c, n_gates_c) == 0:
             raise RuntimeError('Could not setup the hardware')
 
-    def read_data(self):
+    def read_data(self, gates):
         # todo: we need better understanding of the different transfer mode
-        data_type = 200 * c_long
+        data_type = c_uint32 * gates
         data = data_type()
-        result = c_byte()
+        result = c_uint8()
         if libhandle.C8855ReadData(self.hhandle, byref(data), byref(result)) == 0:
             raise RuntimeError('Could not read data')
-        # todo: check if 'result' is not an error
-        return data
+        if result.value < 0:
+            raise RuntimeError('Error during data readout')
+        return list(data)
 
     def set_power(self, status: bool):
         pow_mode = PMT_POWER_ON if status else PMT_POWER_OFF
@@ -143,37 +168,7 @@ class Hamamatsu:
 
     @threaded
     def read_id(self):
-        uid = c_long()
+        uid = c_uint8()
         if libhandle.C8855ReadId(self.hhandle, byref(uid)) == 0:
             raise RuntimeError('Could not read ID')
         self.uid = uid.value
-
-
-
-
-
-
-if __name__ == '__main__':
-    hobjs = minit(2)
-
-    hh = hobjs[0]
-    hh.reset()
-    hh.setup('50MS', SINGLE_TRANSFER, 100)
-
-    a = input('start ?')
-
-    hh.set_power(True)
-    hh.count_start()
-
-    bb = c_long * 100
-    bb = bb()
-    res = c_long()
-    for i in range(10):
-        libhandle.C8855ReadData(hh.hhandle, byref(bb), byref(res))
-
-        print(list(bb))
-        print(res.value)
-
-    # hh.count_stop()
-    # hh.set_power(False)
-    # hh.close()

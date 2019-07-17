@@ -2,10 +2,9 @@
 
 # Form implementation generated from reading ui file 'mainwin.ui'
 #
-# Created by: PyQt5 UI code generator 5.13.0
+# Created by: PyQt5 UI code generator 5.12.2
 #
 # WARNING! All changes made in this file will be lost!
-
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -16,8 +15,9 @@ class Ui_MainWindow(object):
         MainWindow.resize(933, 453)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
+        self.horizontalLayout_4 = QtWidgets.QHBoxLayout(self.centralwidget)
+        self.horizontalLayout_4.setObjectName("horizontalLayout_4")
         self.splitter = QtWidgets.QSplitter(self.centralwidget)
-        self.splitter.setGeometry(QtCore.QRect(9, 9, 499, 236))
         self.splitter.setOrientation(QtCore.Qt.Horizontal)
         self.splitter.setObjectName("splitter")
         self.count_graph = PlotWidget(self.splitter)
@@ -94,8 +94,13 @@ class Ui_MainWindow(object):
         self.line_2.setFrameShadow(QtWidgets.QFrame.Sunken)
         self.line_2.setObjectName("line_2")
         self.verticalLayout.addWidget(self.line_2)
+        self.start_bttn = QtWidgets.QPushButton(self.layoutWidget)
+        self.start_bttn.setCheckable(True)
+        self.start_bttn.setObjectName("start_bttn")
+        self.verticalLayout.addWidget(self.start_bttn)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout.addItem(spacerItem)
+        self.horizontalLayout_4.addWidget(self.splitter)
         MainWindow.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow)
@@ -112,4 +117,7 @@ class Ui_MainWindow(object):
         self.label_3.setText(_translate("MainWindow", "Gate Time [msec]"))
         self.setup_bttn.setText(_translate("MainWindow", "Setup Hardware"))
         self.power_bttn.setText(_translate("MainWindow", "Set Power ON"))
+        self.start_bttn.setText(_translate("MainWindow", "Start"))
+
+
 from pyqtgraph import PlotWidget

@@ -1,4 +1,6 @@
+import time
 import threading as th
+import sys
 
 from PyQt5.QtCore import QSettings, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QMainWindow, QMessageBox
@@ -6,21 +8,35 @@ from PyQt5.QtGui import QDoubleValidator, QIntValidator
 
 from .ui.mainwindow import Ui_MainWindow
 
-from .hamamatsu import minit, GATE_TIMES
+from .hamamatsu import minit, GATE_TIMES, TRANS
 from .buffer import Buffer
 
-
+# PLOT CONSTANTS
 DEFAULT_Y_RANGE = 100
 DEFAULT_BUFFER_SIZE = 200
 DEFAULT_X_RANGE = 30.0
-TIMINGS = [str(key) for key in GATE_TIMES.keys()]
 DEFAULT_PADDING = 0.1
 DEFAULT_PLOT_UPDATE = 0.1
 
+# SETUP
+TIMINGS = [str(key) for key in GATE_TIMES.keys()]
+DEFAULT_MEASUREMENT_POINTS = 500000
+
+
+def _compute_iterations(gtime: str, mes_points: int):
+    gates = TRANS[gtime]
+    gates = min(gates, mes_points)
+    r, iq = mes_points % gates, mes_points // gates
+
+    iterations = iq
+    if not r:
+        iterations += 1
+    return iterations, gates
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     do_update = pyqtSignal()
+    reading_finish = pyqtSignal()
 
     def __init__(self, n_units):
         super(MainWindow, self).__init__()
@@ -55,17 +71,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # todo: output_path should be a real file and save = True (user decision)
         self._buffer = Buffer(DEFAULT_BUFFER_SIZE, '', ['time'] + [f'counts_{i}' for i in range(len(self._hw))])
 
+        self._read_thread = th.Thread(name='reader', target=self._read_data)
+        self._iterations = -1
+        self._gates = -1
+
         # process user actions
         self.y_range_auto.toggled.connect(self._toggle_y_range)
         self.buffer_size_form.editingFinished.connect(self._on_buffer_size_change)
         self.setup_bttn.released.connect(self._on_setup_click)
         self.power_bttn.released.connect(self._on_power_click)
+        self.start_bttn.released.connect(self._on_start_click)
 
         # internal plotting signals
         self.do_update.connect(self.update_plot)
+        self.reading_finish.connect(self._reset_start_bttn)
 
-    def warning_box(self, msg):
-        QMessageBox.warning(self, '', msg)
+    def warning_box(self, msg, seppuku=False):
+        if seppuku:
+            msg = msg + '\nSeppuku engaged!'
+            QMessageBox.warning(self, '', msg)
+            sys.exit(-1)
+        else:
+            QMessageBox.warning(self, '', msg)
 
     def init_hardware(self):
         for hardware in self._hw:
@@ -73,7 +100,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 hardware.read_id()
                 print(hardware.uid)
             except TimeoutError:
-                self.warning_box(f'timeout occurred during hardware init: handle {hardware.hhandle}')
+                self.warning_box(f'timeout occurred during hardware init: handle {hardware.hhandle}', seppuku=True)
 
     ############
     # PLOTTING #
@@ -109,8 +136,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot()
     def update_plot(self):
-        # print('updating plot')
-        # print(self._buffer)
+        print('updating plot')
+        print(self._buffer)
         bb_len = len(self._buffer)
         if bb_len:
             bb_width = len(self._buffer[0])
@@ -128,12 +155,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for values in vs:
             self._plot_data(ts, values)
 
-    def _plot_reminder(self):
-        cond = th.Condition()
-        while True:
-            self.do_update.emint()
-            with cond:
-                cond.wait(DEFAULT_PLOT_UPDATE)
+    def _read_data(self):
+        if self._iterations < 0 or self._gates < 0:
+            raise RuntimeError('Trying to read from un-init hardware')
+
+        for hardware in self._hw:
+            hardware.count_start()
+
+        for i in range(self._iterations):
+            points = [0.0] * len(self._hw)
+            for hi, hardware in enumerate(self._hw):
+                if self._ha
+                data = hardware.read_data(self._gates)
+                points[hi] = sum(data) / self._gates
+
+            self._buffer.push_back(time.time(), *points)
+            self.do_update.emit()
+        self.reading_finish.emit()
 
     #########################
     # USER INPUT PROCESSING #
@@ -153,7 +191,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot()
     def _on_setup_click(self):
-        raise NotImplementedError('ciccio devo ancora capire come parla sto photon counter')
+        if not self._hw:
+            self.warning_box('No hardware connected.')
+            return
+        # get all info we need
+        gtime = self.gate_time_select.currentText()
+        self._iterations, self._gates = _compute_iterations(gtime, DEFAULT_MEASUREMENT_POINTS)
+        for hardware in self._hw:
+            hardware.setup(gtime, 1, self._gates)
 
     def _toggle_hardware_power(self, status):
         for hardware in self._hw:
@@ -164,6 +209,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot()
     def _on_power_click(self):
+        if not self._hw:
+            self.warning_box('No hardware connected.')
+            return
         sender = self.sender()
         if sender.isChecked():
             sender.setText('set Power OFF')
@@ -172,6 +220,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             sender.setText('set Power ON')
             pow_status = False
         self._toggle_hardware_power(pow_status)
+
+    @pyqtSlot()
+    def _on_start_click(self):
+        if self._iterations < 0 or self._gates < 0:
+            self.warning_box('Use the setup button first.')
+            return
+
+        if not self._hw:
+            self.warning_box('No hardware connected.')
+            return
+        sender = self.sender()
+        if sender.isChecked():
+            try:
+                self._read_thread.start()
+            except Exception as e:
+                self.warning_box(str(e))
+            sender.setText('Stop')
+        else:
+            for hardware in self._hw:
+                hardware.count_stop()
+            sender.setText('Start')
+
+    @pyqtSlot()
+    def _reset_start_bttn(self):
+        self.start_bttn.setChecked(False)
 
     ########################
     # SETTINGS AND CLOSING #
