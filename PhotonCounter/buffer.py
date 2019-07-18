@@ -88,6 +88,3 @@ class Buffer:
         while len(self._container) >= self._size:
             # delete older points
             self._container.popleft()
-
-
-

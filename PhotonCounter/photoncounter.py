@@ -1,36 +1,35 @@
 import sys
 import faulthandler
-import time
 import atexit
 
 from PyQt5.QtWidgets import QApplication, QInputDialog
 
 from .gui import MainWindow
+from .hamamatsu import Hamamatsu
+from .hama_ctrl import HamaCtrl
+
+import logging
+fmt = "[%(asctime)s] [%(levelname)s] [%(funcName)s(): line %(lineno)s] [PID:%(process)d TID:%(thread)d] %(message)s"
+date_fmt = "%d/%m/%Y %H:%M:%S"
+logging.basicConfig(format=fmt, datefmt=date_fmt, filename='debug.log', level=logging.DEBUG)
 
 APP_NAME = "BaLi Photon Counter"
 APP_VERSION = "0.1"
+
 
 class PhotonCounter(QApplication):
     """Main class, interconnects the other classes"""
     def __init__(self, sys_argv):
         super(PhotonCounter, self).__init__(sys_argv)
 
-        # ask user for how many units we should work with
-        # units, ok = QInputDialog.getInt(None, 'Units number', 'Units number:', value=1, min=1, max=16)
-        #
-        # if not units or not ok:
-        #     sys.exit(0)
+        self._model = Hamamatsu()
+        self._view = MainWindow(self._model)
+        self._ctrl = HamaCtrl(self._view, self._model)
 
-        self._main_view = MainWindow(1)
-
-        self._main_view.show()
+        self._view.show()
 
         self.setApplicationName(APP_NAME)
         self.setApplicationVersion(APP_VERSION)
-
-        # fixme: is this proper ?
-        time.sleep(0.25)
-        self._main_view.init_hardware()
 
 
 def main():
@@ -40,16 +39,17 @@ def main():
         app = PhotonCounter(sys.argv)
 
         def _exit_handler():
-            for hh in app._main_view._hw:
-                try:
-                    hh.set_power(False)
-                    hh.close()
-                except Exception:
-                    pass
+            try:
+                app._model.close()
+            except:
+                logging.error('Unable to close hardware in _exit_handler')
 
         atexit.register(_exit_handler)
 
-        sys.exit(app.exec_())
+        try:
+            sys.exit(app.exec_())
+        except Exception as e:
+            logging.error(str(e))
 
 
 

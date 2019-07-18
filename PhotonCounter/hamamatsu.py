@@ -1,4 +1,3 @@
-import os.path
 import threading as th
 from ctypes import windll, byref, c_int32, c_uint32, c_uint16, c_uint8
 from functools import wraps
@@ -59,13 +58,10 @@ PMT_POWER_OFF = c_uint8(0)
 PMT_POWER_ON = c_uint8(1)
 PMT_POWER_CHECK = c_uint8(2)
 
-# HANDLES
 MAX_HANDLES = 16
-u_handle = None
-handles = []
 
 
-def threaded(f):
+def thread_timeout(f):
     @wraps(f)
     def wrapper(*args):
         _executor = th.Thread(name='executor', target=f, args=args, daemon=True)
@@ -81,41 +77,72 @@ def threaded(f):
     return wrapper
 
 
-@threaded
-def sopen():
-    global u_handle
-    u_handle = libhandle.C8855Open()
-
-
-@threaded
-def mopen(nunits):
-    global handles
-    handles = [c_int32() for _ in range(MAX_HANDLES)]
-    hh_refs = [byref(hh) for hh in handles]
-    libhandle.C8855MOpen(nunits, *hh_refs)
-
-
-def is_good_handle(handle):
+def _is_good_handle(handle):
     if handle is None or handle.value <= 0:
         return False
     return True
 
 
-def minit(nunits):
-    mopen(nunits)
-    hama_objs = []
+class Hamamatsu:
+    """Class represents a multitude of counting units"""
+    def __init__(self):
+        self.units = 0
+        self.handles = []
+        self.objs = []
 
-    global handles
-    for hh in handles:
-        if is_good_handle(hh):
-            obj = Hamamatsu(hh)
+    def _minit(self):
+        for hh in self.handles:
+            obj = _Hamamatsu(hh)
             obj.read_id()
             print(f'Detected hardware with uid = {obj.uid}')
-            hama_objs.append(obj)
-    return hama_objs
+            self.objs.append(obj)
+
+    @thread_timeout
+    def open(self):
+        self.handles = [c_int32() for _ in range(MAX_HANDLES)]
+        hh_refs = [byref(hh) for hh in self.handles]
+        libhandle.C8855MOpen(MAX_HANDLES, *hh_refs)
+        # filter the good handles
+        self.handles = [h for h in self.handles if _is_good_handle(h)]
+        self._minit()
+
+    def reset(self):
+        for obj in self.objs:
+            obj.reset()
+
+    def close(self):
+        for obj in self.objs:
+            obj.close()
+
+    def count_start(self):
+        for obj in self.objs:
+            if obj.is_counting:
+                continue
+            obj.count_start()
+
+    def count_stop(self):
+        for obj in self.objs:
+            if not obj.is_counting:
+                continue
+            obj.count_stop()
+
+    def setup(self, gtime: str, mode: int, n_gates: int):
+        for obj in self.objs:
+            obj.setup(gtime, mode, n_gates)
+
+    def read_data(self, gates):
+        results = [[0.0]*gates for _ in self.objs]
+        for i, obj in enumerate(self.objs):
+            results[i] = obj.read_data(gates)
+        return results
+
+    def set_power(self, status: bool):
+        for obj in self.objs:
+            obj.set_power(status)
 
 
-class Hamamatsu:
+class _Hamamatsu:
+    """Class represents a single counting unit"""
     def __init__(self, handle: c_int32):
         self.uid = -1
         self.hhandle = handle
@@ -124,32 +151,6 @@ class Hamamatsu:
 
         self.iterations = -1
         self.gates = -1
-
-    def reset(self):
-        if libhandle.C8855Reset(self.hhandle) == 0:
-            raise RuntimeError(f'Could not reset handle {self.hhandle}')
-
-    def close(self):
-        if libhandle.C8855Close(self.hhandle) == 0:
-            raise RuntimeError(f'Could not close handle {self.hhandle}')
-
-    @threaded
-    def count_start(self):
-        if libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER) == 0:
-            raise RuntimeError(f'Could not start count process for handle {self.hhandle}')
-        self.is_counting = True
-
-    @threaded
-    def count_stop(self):
-        if libhandle.C8855CountStop(self.hhandle) == 0:
-            raise RuntimeError(f'Could not stop count process for handle {self.hhandle}')
-        self.is_counting = False
-
-    def setup(self, gtime: str, mode: int, n_gates: int):
-        mode_c = SINGLE_TRANSFER if mode == 0 else BLOCK_TRANSFER
-        n_gates_c = c_uint16(n_gates)
-        if libhandle.C8855Setup(self.hhandle, GATE_TIMES[gtime], mode_c, n_gates_c) == 0:
-            raise RuntimeError(f'Could not setup handle {self.hhandle}')
 
     def read_data(self, gates):
         data_type = c_uint32 * gates
@@ -161,14 +162,43 @@ class Hamamatsu:
             raise RuntimeError(f'Error during data readout (handle {self.hhandle})')
         return list(data)
 
-    @threaded
+    @thread_timeout
+    def reset(self):
+        if libhandle.C8855Reset(self.hhandle) == 0:
+            raise RuntimeError(f'Could not reset handle {self.hhandle}')
+
+    @thread_timeout
+    def close(self):
+        if libhandle.C8855Close(self.hhandle) == 0:
+            raise RuntimeError(f'Could not close handle {self.hhandle}')
+
+    @thread_timeout
+    def count_start(self):
+        if libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER) == 0:
+            raise RuntimeError(f'Could not start count process for handle {self.hhandle}')
+        self.is_counting = True
+
+    @thread_timeout
+    def count_stop(self):
+        if libhandle.C8855CountStop(self.hhandle) == 0:
+            raise RuntimeError(f'Could not stop count process for handle {self.hhandle}')
+        self.is_counting = False
+
+    @thread_timeout
+    def setup(self, gtime: str, mode: int, n_gates: int):
+        mode_c = SINGLE_TRANSFER if mode == 0 else BLOCK_TRANSFER
+        n_gates_c = c_uint16(n_gates)
+        if libhandle.C8855Setup(self.hhandle, GATE_TIMES[gtime], mode_c, n_gates_c) == 0:
+            raise RuntimeError(f'Could not setup handle {self.hhandle}')
+
+    @thread_timeout
     def set_power(self, status: bool):
         pow_mode = PMT_POWER_ON if status else PMT_POWER_OFF
         if libhandle.C8855SetPmtPower(self.hhandle, pow_mode) == 0:
             raise RuntimeError(f'Could not set power for handle {self.hhandle}')
         self.is_powered = status
 
-    @threaded
+    @thread_timeout
     def read_id(self):
         uid = c_uint8()
         if libhandle.C8855ReadId(self.hhandle, byref(uid)) == 0:
