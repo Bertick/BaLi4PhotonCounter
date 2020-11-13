@@ -53,6 +53,11 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             save=True
         )
 
+        # todo: organize better how these random values are stored ... don't leave them around like this
+        # these are used for plotting the absolute min/max of moving average
+        self._mvavg_min = np.inf
+        self._mvavg_max = -np.inf
+
         self.scroll_plot.labels = ['Time', 'Counts']
         self.scroll_plot.display_time = DEFAULT_DISPLAY_TIME
 
@@ -76,6 +81,8 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         #
         self.param_toggle_acquisition.setDisabled(True)
         self.param_toggle_acquisition.pressed.connect(self._on_toggle_acquisition)
+        #
+        self.mvavg_minmax_checkbox.toggled.connect(self._on_mvavg_minmax_toggle)
 
         # internal plot update signal
         self.sig_update_plot.connect(self._update_plot)
@@ -102,12 +109,29 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         ydata_full = list(self._data_buffer.containers[0])
         ydata = ydata_full[-npoints:]
 
+        # moving average
         ydata_avg = None
         if self.mvavg_checkbox.isChecked():
             ydata_avg = self._get_moving_avg(ydata_full)[-npoints:]
 
+            self._mvavg_max = max(self._mvavg_max, np.max(ydata_avg))
+            self._mvavg_min = min(self._mvavg_min, np.min(ydata_avg))
+
+        # moving average absolute min and max lines
+        ydata_avg_min = None
+        ydata_avg_max = None
+        if self.mvavg_minmax_checkbox.isChecked():
+            ydata_avg_min = np.ones_like(xdata) * self._mvavg_min
+            ydata_avg_max = np.ones_like(xdata) * self._mvavg_max
+
         # update plots
-        self.scroll_plot.plot(xdata, ydata, ydata_avg)
+        self.scroll_plot.plot(
+            xdata,
+            ydata,
+            ydata_avg,
+            ydata_avg_min,
+            ydata_avg_max
+        )
 
     #############################
     # CALLBACK FOR USER ACTIONS #
@@ -212,6 +236,12 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
                 # enable power and gate time buttons
                 self.param_set_gatetime.setEnabled(True)
                 self.param_toggle_power.setEnabled(True)
+
+    @pyqtSlot(bool)
+    def _on_mvavg_minmax_toggle(self, checked):
+        if not checked:
+            self._mvavg_max = -np.inf
+            self._mvavg_min = np.inf
 
     #############
     # INTERNALS #

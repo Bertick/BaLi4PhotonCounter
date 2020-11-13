@@ -1,19 +1,27 @@
 from pyqtgraph import PlotWidget, mkPen, mkBrush
 from itertools import islice
 
-SYMBOLS = ['t', 't1', 'o', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd']
+# SYMBOLS = ['t', 't1', 'o', 't2', 't3', 's', 'p', 'h', 'star', '+', 'd']
+SYMBOLS = ['o', 'o', None, None]
 COLORS = [
-    (31, 119, 180),
+    (255, 255, 255),
     (255, 127, 14),
-    (44, 160, 44),
-    (214, 39, 40),
-    (148, 103, 189),
-    (140, 86, 75),
-    (227, 119, 194),
-    (127, 127, 127),
-    (188, 189, 34),
-    (23, 190, 207)
+    (255, 0, 0),
+    (255, 0, 0),
 ]
+
+# COLORS = [
+#     (31, 119, 180),
+#     (255, 127, 14),
+#     (44, 160, 44),
+#     (214, 39, 40),
+#     (148, 103, 189),
+#     (140, 86, 75),
+#     (227, 119, 194),
+#     (127, 127, 127),
+#     (188, 189, 34),
+#     (23, 190, 207)
+# ]
 
 
 class ScrollPlot(PlotWidget):
@@ -89,11 +97,10 @@ class ScrollPlot(PlotWidget):
                 new_curve = self.plotItem.plot(
                     xx,
                     yy,
-                    #pen=(255, 255, 255),
                     pen=COLORS[j % len(COLORS)],
-                    symbol='o',
-                    symbolPen=(237, 237, 237),
-                    symbolBrush=(237, 237, 237),
+                    symbol=SYMBOLS[j % len(SYMBOLS)],
+                    symbolPen=COLORS[j % len(COLORS)],
+                    symbolBrush=COLORS[j % len(COLORS)],
                     symbolSize=3
                 )
                 self._data_curves.append(new_curve)
