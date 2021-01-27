@@ -25,6 +25,10 @@ COLORS = [
 
 
 class ScrollPlot(PlotWidget):
+    """
+    Implements a scrolling plot (new data appears from the right and scroll toward the left).
+    Supports multiple curves
+    """
     def __init__(self, parent=None, labels=tuple(), units=tuple(), units_prefixes=tuple()):
         super(ScrollPlot, self).__init__(parent=parent)
 
@@ -50,17 +54,6 @@ class ScrollPlot(PlotWidget):
 
         # display options
         self._displaytime = 30.0
-
-        self._colours = {
-            'red': (255, 0, 0),
-            'orange': (255, 112, 0),
-            'yellow': (255, 255, 0),
-            'green': (0, 255, 0),
-            'blue': (0, 0, 255),
-            'magenta': (255, 0, 255),
-            'white': (255, 255, 255),
-            'black': (0, 0, 0)
-        }
 
     ####################
     # CLIENT INTERFACE #
@@ -88,12 +81,14 @@ class ScrollPlot(PlotWidget):
                 self._data_curves[j].setData(xx, yy)
 
             except TypeError:
+                # data is None: clear the curve
                 try:
                     self._data_curves[j].setData([], [])
                 except IndexError:
                     continue
 
             except IndexError:
+                # curve does not exist create new
                 new_curve = self.plotItem.plot(
                     xx,
                     yy,
@@ -120,16 +115,17 @@ class ScrollPlot(PlotWidget):
         # set the value
         self._displaytime = value
 
-    def set_line_colour(self, c='blue'):
-        self._data_curve.setPen(mkPen(self._colours[c]))
-        self._data_curve.setSymbolPen(mkPen(self._colours[c]))
-
-    def set_symbol_colour(self, c='blue'):
-        self._data_curve.setSymbolBrush(mkBrush(self._colours[c]))
-
-    def set_colour(self, c='blue'):
-        self.set_line_colour(c)
-        self.set_symbol_colour(c)
+    # todo: extend these to work with multiple lines, maybe the line index could be a function argument
+    # def set_line_colour(self, c='blue'):
+    #     self._data_curve.setPen(mkPen(self._colours[c]))
+    #     self._data_curve.setSymbolPen(mkPen(self._colours[c]))
+    #
+    # def set_symbol_colour(self, c='blue'):
+    #     self._data_curve.setSymbolBrush(mkBrush(self._colours[c]))
+    #
+    # def set_colour(self, c='blue'):
+    #     self.set_line_colour(c)
+    #     self.set_symbol_colour(c)
 
     ##############
     # SET LABELS #

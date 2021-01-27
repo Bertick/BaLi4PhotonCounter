@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import QMainWindow
 from .Gui.mainwin import Ui_MainWindow
 from .hamamatsu import GATE_TIMES, Hamamatsu
 from .buffer import SimpleBuffer
+from .fourieranalysis_gui import FourierGui
 
 DATAFOLDER = os.path.join(os.path.realpath('.'), 'Data')
 
@@ -29,7 +30,9 @@ def _build_date():
 # todo: all messages being written by dbg_console should end with a dot
 # todo: all Exception messages should not end with a dot (it should be added when writing to dbg_console)
 class PhotonCounterGui(QMainWindow, Ui_MainWindow):
-
+    """
+    Implements GUI and logic for main window
+    """
     sig_update_plot = pyqtSignal()
 
     def __init__(self):
@@ -42,6 +45,7 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         # data
         # hardware is initialized to Hamamatsu() just to have type checking from PyCharm
         self._hardware = Hamamatsu()
+        # create a data readout thread
         self._readout_thread = self._regenerate_read_thread()
         self._readout_halt_event = th.Event()
 
@@ -53,11 +57,15 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             save=True
         )
 
-        # todo: organize better how these random values are stored ... don't leave them around like this
+        # FFT analyser GUI
+        self.fft_analysis = FourierGui()
+
+        # todo: organize better how these values are stored ... don't leave them randomly around like this
         # these are used for plotting the absolute min/max of moving average
         self._mvavg_min = np.inf
         self._mvavg_max = -np.inf
 
+        # set plot labels and standard display time
         self.scroll_plot.labels = ['Time', 'Counts']
         self.scroll_plot.display_time = DEFAULT_DISPLAY_TIME
 
@@ -66,7 +74,8 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         self.param_gate_time.setCurrentIndex(TIMINGS.index('100MS'))
         self.display_time_box.setValue(DEFAULT_DISPLAY_TIME)
         self.buffer_size_box.setValue(DEFAULT_BUFFER_SIZE)
-        #
+
+        # connect QtSignals to proper callback functions
         self.display_time_box.valueChanged.connect(self._on_display_time_change)
         self.buffer_size_box.valueChanged.connect(self._on_buffer_size_change)
         self.clearplot_bttn.pressed.connect(self._on_clear_plot_click)
@@ -83,6 +92,8 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         self.param_toggle_acquisition.pressed.connect(self._on_toggle_acquisition)
         #
         self.mvavg_minmax_checkbox.toggled.connect(self._on_mvavg_minmax_toggle)
+        #
+        self.fft_push_bttn.clicked.connect(self._on_fft_bttn_click)
 
         # internal plot update signal
         self.sig_update_plot.connect(self._update_plot)
@@ -91,25 +102,35 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
     # CLIENT INTERFACE #
     ####################
     def add_data(self, values):
+        """
+        Called by data readout thread when new data is available
+        """
         # add to buffer
         for val in values:
             self._data_buffer.push_back(val)
         # signal for plot update (this should happen across threads)
+        # allows the data readout thread to push new data in buffer
+        # but keeps the Plot update in the main Thread (this is mandatory)
         self.sig_update_plot.emit()
 
+    #############
+    # INTERNALS #
+    #############
     @pyqtSlot()
     def _update_plot(self):
-        # compute amount of points to diplay
+        # compute amount of points to display
         gate_time = self._hardware.get_gatetime_data()[2]
         npoints = int((self.scroll_plot.display_time // gate_time) + 1)
+        # if the buffer is too small we need to limit the number of points to what we have
         npoints = min(npoints, len(self._data_buffer.containers[0]))
 
         xdata = (np.mgrid[0:npoints] - npoints) * gate_time
 
+        # is this cast to list necessary?
         ydata_full = list(self._data_buffer.containers[0])
         ydata = ydata_full[-npoints:]
 
-        # moving average
+        # moving average computation
         ydata_avg = None
         if self.mvavg_checkbox.isChecked():
             ydata_avg = self._get_moving_avg(ydata_full)[-npoints:]
@@ -124,7 +145,7 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             ydata_avg_min = np.ones_like(xdata) * self._mvavg_min
             ydata_avg_max = np.ones_like(xdata) * self._mvavg_max
 
-        # update plots
+        # update plot
         self.scroll_plot.plot(
             xdata,
             ydata,
@@ -133,12 +154,17 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             ydata_avg_max
         )
 
+        # update fft view if enabled:
+        if self.fft_analysis.isActiveWindow():
+            self.fft_analysis.process(xdata, ydata)
+
     #############################
     # CALLBACK FOR USER ACTIONS #
     #############################
     @pyqtSlot()
     def _on_display_time_change(self):
         self.scroll_plot.display_time = self.display_time_box.value()
+        self.fft_analysis.set_display_time(self.display_time_box.value())
 
     @pyqtSlot()
     def _on_buffer_size_change(self):
@@ -148,6 +174,17 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
     def _on_clear_plot_click(self):
         self.scroll_plot.erase()
 
+    @pyqtSlot(bool)
+    def _on_mvavg_minmax_toggle(self, checked):
+        if not checked:
+            self._mvavg_max = -np.inf
+            self._mvavg_min = np.inf
+
+    @pyqtSlot(bool)
+    def _on_fft_bttn_click(self, checked):
+        self.fft_analysis.show()
+
+    # Hardware interaction
     @pyqtSlot()
     def _on_connect(self):
         try:
@@ -204,6 +241,7 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             except (RuntimeError, TimeoutError) as e:
                 self.dbg_console.write(f'Could not start counting. Msg: {str(e)}.', log=True, level=logging.ERROR)
             else:
+                # setup the buffer filepath and header information
                 fname = f'log_{_build_date()}.csv'
                 path = os.path.join(DATAFOLDER, fname)
                 self._data_buffer.filepath = path
@@ -213,19 +251,25 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
                 self._readout_thread.start()
 
                 self.param_toggle_acquisition.setText('Stop Acquisition')
-                # disable power and gate time buttons
+                # disable connect, power and gate time buttons
+                self.param_connect.setEnabled(False)
                 self.param_set_gatetime.setEnabled(False)
                 self.param_toggle_power.setEnabled(False)
         else:
+            # stop readout thread
             self._readout_halt_event.set()
             # todo: this timeout time should not be hardcoded
             self._readout_thread.join(1.0)
+            # I've noticed that most of the time the Hardware library fucks up and the data Thread does not
+            # rejoin the main thread. So check if that happened:
             if self._readout_thread.is_alive():
                 self.dbg_console.write('Failed to stop data readout thread correctly.',
                                        log=True,
                                        level=logging.WARNING)
-            # even if Thread didn't stop correctly we can hope that the Garbage collector will take care of it.
+            # Even if readout thread didn't stop correctly we can hope that the Garbage collector will take care of it.
+            # So just generate a new thread and the old one should have zero references left.
             self._readout_thread = self._regenerate_read_thread()
+            # Attempt to stop Hardware from counting photons
             try:
                 self._hardware.count_stop()
             except (RuntimeError, TimeoutError) as e:
@@ -233,15 +277,10 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             else:
                 self.dbg_console.write('Data readout stopped.', log=True, level=logging.INFO)
                 self.param_toggle_acquisition.setText('Start Acquisition')
-                # enable power and gate time buttons
+                # enable connect, power and gate time buttons
+                self.param_connect.setEnabled(True)
                 self.param_set_gatetime.setEnabled(True)
                 self.param_toggle_power.setEnabled(True)
-
-    @pyqtSlot(bool)
-    def _on_mvavg_minmax_toggle(self, checked):
-        if not checked:
-            self._mvavg_max = -np.inf
-            self._mvavg_min = np.inf
 
     #############
     # INTERNALS #
@@ -253,10 +292,12 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
     def _data_readout(self):
         self.dbg_console.write('Starting data readout.', log=True, level=logging.INFO)
         # compute delay between calls
+        # todo: do we really need this? shouldn't the hardware take care of the delay between calls?
         _, num_gates, gate_time = self._hardware.get_gatetime_data()
         delay = num_gates * gate_time * 0.9
 
         while True:
+            # check if the 'Halt event' is set, if yes break from the loop.
             if self._readout_halt_event.is_set():
                 self._readout_halt_event.clear()
                 self.dbg_console.write('Data readout thread received halt signal.', log=True, level=logging.INFO)
@@ -269,7 +310,7 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
                 break
             else:
                 self.add_data(data)
-            time.sleep(delay)
+            #time.sleep(delay)
 
         self.dbg_console.write('Data readout completed.', log=True, level=logging.INFO)
 
@@ -307,7 +348,9 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
     def closeEvent(self, event):
         self.save_settings()
 
-        # try to put hardware in safe
+        self.fft_analysis.close()
+
+        # try to put hardware in safe condition
         if self._hardware.is_counting:
             self._readout_halt_event.set()
             self._hardware.count_stop()

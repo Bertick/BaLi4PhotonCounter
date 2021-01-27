@@ -6,12 +6,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>993</width>
-    <height>746</height>
+    <width>992</width>
+    <height>810</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>BaLi Photon Counter</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="horizontalLayout_2">
@@ -24,7 +24,7 @@
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
        </property>
-       <widget class="ScrollPlot" name="scroll_plot" native="true"/>
+       <widget class="ScrollPlot" name="scroll_plot"/>
        <widget class="QWidget" name="layoutWidget">
         <layout class="QVBoxLayout" name="verticalLayout_2">
          <item>
@@ -155,6 +155,9 @@
            <layout class="QGridLayout" name="gridLayout">
             <item row="0" column="1">
              <widget class="QSpinBox" name="mvavg_spinbox">
+              <property name="minimum">
+               <number>1</number>
+              </property>
               <property name="maximum">
                <number>100</number>
               </property>
@@ -178,6 +181,13 @@
              </widget>
             </item>
            </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="fft_push_bttn">
+           <property name="text">
+            <string>Open FFT window</string>
+           </property>
           </widget>
          </item>
          <item>
@@ -211,7 +221,7 @@
   </customwidget>
   <customwidget>
    <class>ScrollPlot</class>
-   <extends>QWidget</extends>
+   <extends>QGraphicsView</extends>
    <header>.scrollplot</header>
    <container>1</container>
   </customwidget>

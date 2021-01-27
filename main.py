@@ -11,7 +11,7 @@ date_fmt = "%d/%m/%Y %H:%M:%S"
 logging.basicConfig(format=fmt, datefmt=date_fmt, filename='debug.log', level=logging.DEBUG)
 
 APP_NAME = "BaLi Photon Counter"
-APP_VERSION = "0.1"
+APP_VERSION = "0.2"
 
 
 class PhotonCounter(QApplication):

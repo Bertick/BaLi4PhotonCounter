@@ -1,12 +1,15 @@
-import threading as th
-from ctypes import byref, c_int32, c_uint32, c_uint16, c_uint8
-from functools import wraps
+"""
+Module implements a wrapper class for the hardware library. Errors from c-style library are converted to Python
+exceptions, similarly c-style variables are converted to Python variables as needed.
+"""
+from ctypes import byref, c_uint32, c_uint16, c_uint8
 import os.path
 
 import platform
 
+# I wrote the software mostly under Linux, but the hardware library only works on Windows. So i made a 'fakelib' module
+# that simulates the hardware for debugging purposes.
 OS = platform.system()
-
 if OS == 'Linux':
     import PhotonCounter.fakelib as libhandle
 elif OS == 'Windows':
@@ -56,29 +59,21 @@ PMT_POWER_CHECK = c_uint8(2)
 MAX_HANDLES = 16
 
 
-# def thread_timeout(f):
-#     @wraps(f)
-#     def wrapper(*args):
-#         _executor = th.Thread(name='executor', target=f, args=args, daemon=True)
-#         _executor.start()
-#
-#         # wait USB_TIMEOUT for the executor to finish
-#         _executor.join(USB_TIMEOUT)
-#
-#         if _executor.is_alive():
-#             # timeout occurred
-#             _executor._delete()
-#             raise TimeoutError()
-#     return wrapper
-
-
 def _is_good_handle(handle):
+    """
+    Checks if the 'handle' variable represents a good handle pointer for the Hardware
+    (it's supposed to be a positive integer)
+    """
     if handle is None or handle <= 0:
         return False
     return True
 
 
 # def minit(handles):
+#     """
+#     Attempts to open a list of handles and returns multiple Hamamatsu objects. used for multi-hardware support
+#     (NOT IMPLEMENTED)
+#     """
 #     objs = []
 #     for hh in handles:
 #         obj = Hamamatsu(hh)
@@ -89,6 +84,9 @@ def _is_good_handle(handle):
 
 
 def _open():
+    """
+    Protected function for opening a single Hardware connection.
+    """
     handle = libhandle.C8855Open()
     if not _is_good_handle(handle):
         raise ValueError(f"No Hardware detected, got handle {handle}.")
@@ -96,8 +94,11 @@ def _open():
 
 
 class Hamamatsu:
-    """Class represents a single counting unit"""
+    """
+    Class represents a single counting unit. Hardware connection is made through the factory method .open()
+    """
     def __init__(self, *, handle: int = 0):
+        # universal ID
         self.uid = -1
         self.hhandle = handle
         self.is_powered = False
@@ -111,6 +112,11 @@ class Hamamatsu:
     #######################
     @classmethod
     def open(cls):
+        """
+        Factory method for initializing a single counting unit.
+        :return: Hamamatsu object
+        """
+        # todo: as long as multiple hardware support is not in place, this should behave as a singleton.
         handle = _open()
         obj = cls(handle=handle)
         obj.read_id()
@@ -128,12 +134,12 @@ class Hamamatsu:
             raise RuntimeError(f'Could not reset handle {self.hhandle}')
 
     def count_start(self):
-        if not libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER):
+        if libhandle.C8855CountStart(self.hhandle, SOFTWARE_TRIGGER) == 0:
             raise RuntimeError(f'Could not start count process for handle {self.hhandle}')
         self.is_counting = True
 
     def count_stop(self):
-        if not libhandle.C8855CountStop(self.hhandle):
+        if libhandle.C8855CountStop(self.hhandle) == 0:
             raise RuntimeError(f'Could not stop count process for handle {self.hhandle}')
         self.is_counting = False
 
@@ -145,12 +151,12 @@ class Hamamatsu:
         # gate time hardware code
         gtime_c = GATE_TIMES[self.gate_time][0]
         #
-        if not libhandle.C8855Setup(self.hhandle, gtime_c, mode_c, n_gates_c):
+        if libhandle.C8855Setup(self.hhandle, gtime_c, mode_c, n_gates_c) == 0:
             raise RuntimeError(f'Could not setup handle {self.hhandle}')
 
     def set_power(self, status: bool):
         pow_mode = PMT_POWER_ON if status else PMT_POWER_OFF
-        if not libhandle.C8855SetPmtPower(self.hhandle, pow_mode):
+        if libhandle.C8855SetPmtPower(self.hhandle, pow_mode) == 0:
             raise RuntimeError(f'Could not set power for handle {self.hhandle}')
         self.is_powered = status
 
@@ -158,12 +164,15 @@ class Hamamatsu:
         data_type = c_uint32 * self.gates
         data = data_type()
         result = c_uint8()
-        if not libhandle.C8855ReadData(self.hhandle, byref(data), byref(result)):
+        if libhandle.C8855ReadData(self.hhandle, byref(data), byref(result)) == 0:
             raise RuntimeError(f'Could not read data from handle {self.hhandle}')
         if result.value < 0:
             raise RuntimeError(f'Error during data readout (handle {self.hhandle})')
         # the 'data' array contains the counts per gate (each represents photon counts after 'gate time' seconds)
         # return the whole array and plot it
+
+        # the '[:]' takes all elements of array, this is to ensure we return a copy of the array and not the pointer
+        # it. Since this array it's going to be overridden next data acquisition.
         return data[:]
 
     def read_id(self):
@@ -187,7 +196,6 @@ class Hamamatsu:
     def get_gatetime_data(self):
         return GATE_TIMES[self._gate_time]
 
-    # NOT CALLED ANYMORE
     # def _compute_iterations(self):
     #     gates = TRANS[self.gate_time]
     #     gates = min(gates, DEFAULT_MEASUREMENT_POINTS)

@@ -13,7 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(993, 746)
+        MainWindow.resize(992, 810)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.horizontalLayout_2 = QtWidgets.QHBoxLayout(self.centralwidget)
@@ -107,6 +107,9 @@ class Ui_MainWindow(object):
         self.mvavg_minmax_checkbox.setObjectName("mvavg_minmax_checkbox")
         self.gridLayout.addWidget(self.mvavg_minmax_checkbox, 1, 0, 1, 1)
         self.verticalLayout_2.addWidget(self.mvavg_checkbox)
+        self.fft_push_bttn = QtWidgets.QPushButton(self.layoutWidget)
+        self.fft_push_bttn.setObjectName("fft_push_bttn")
+        self.verticalLayout_2.addWidget(self.fft_push_bttn)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.verticalLayout_2.addItem(spacerItem)
         self.dbg_console = QDbgConsole(self.splitter_vert)
@@ -122,7 +125,7 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
+        MainWindow.setWindowTitle(_translate("MainWindow", "BaLi Photon Counter"))
         self.groupBox.setTitle(_translate("MainWindow", "Options - Hardware"))
         self.param_connect.setText(_translate("MainWindow", "Connect"))
         self.label.setText(_translate("MainWindow", "Gate Time"))
@@ -137,5 +140,6 @@ class Ui_MainWindow(object):
         self.mvavg_checkbox.setTitle(_translate("MainWindow", "Options - Moving Average"))
         self.label_4.setText(_translate("MainWindow", "Window size (# points)"))
         self.mvavg_minmax_checkbox.setText(_translate("MainWindow", "Show Minimum and Maximum"))
+        self.fft_push_bttn.setText(_translate("MainWindow", "Open FFT window"))
 from .qdbgconsole import QDbgConsole
 from .scrollplot import ScrollPlot
