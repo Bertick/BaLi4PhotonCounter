@@ -31,8 +31,7 @@ class BodePlot(PlotWidget):
 
         self.plotItem.setLabel('bottom', 'f', units='Hz')
         self.plotItem.setLabel('left', '')
-        self.plotItem.setYRange(0.0, 1.0, padding=0.0)
-        self.plotItem.setLogMode(True, False)
+        # self.plotItem.setLogMode(True, False)
 
     def plot(self, xdata, *ydatas):
         for j, ydata in enumerate(ydatas):
@@ -75,6 +74,8 @@ class BodePlot(PlotWidget):
                 fillLevel=0.0,
             )
         # todo: add support to plot phase on secondary y-axis on curve j+1
+
+        self.plotItem.setYRange(0.0, 1.0, padding=0.0)
 
     def erase(self):
         for data_curve in self._data_curves:

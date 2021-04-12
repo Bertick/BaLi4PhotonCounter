@@ -64,6 +64,9 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         # these are used for plotting the absolute min/max of moving average
         self._mvavg_min = np.inf
         self._mvavg_max = -np.inf
+        self._start_time = 0.0
+        self._measurement_time = 0.0
+        self._measured_points = 0
 
         # set plot labels and standard display time
         self.scroll_plot.labels = ['Time', 'Counts']
@@ -108,6 +111,9 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
         # add to buffer
         for val in values:
             self._data_buffer.push_back(val)
+
+        self._measured_points += len(values)
+        self._measurement_time = time.time()
         # signal for plot update (this should happen across threads)
         # allows the data readout thread to push new data in buffer
         # but keeps the Plot update in the main Thread (this is mandatory)
@@ -153,6 +159,10 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             ydata_avg_min,
             ydata_avg_max
         )
+
+        # update the elapsed time and num points
+        self.spinbox_elapsed_time.setValue(self._measurement_time - self._start_time)
+        self.spinbox_num_points.setValue(self._measured_points)
 
         # update fft view if enabled:
         if self.fft_analysis.isActiveWindow():
@@ -241,6 +251,8 @@ class PhotonCounterGui(QMainWindow, Ui_MainWindow):
             except (RuntimeError, TimeoutError) as e:
                 self.dbg_console.write(f'Could not start counting. Msg: {str(e)}.', log=True, level=logging.ERROR)
             else:
+                # save start time
+                self._start_time = time.time()
                 # setup the buffer filepath and header information
                 fname = f'log_{_build_date()}.csv'
                 path = os.path.join(DATAFOLDER, fname)
